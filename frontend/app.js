@@ -38,6 +38,12 @@ function renderMetrics(result) {
   $('isCagr').textContent = pct(m.cagr); $('isVol').textContent = pct(m.volatility); $('isSharpe').textContent = num(m.sharpe); $('isSortino').textContent = num(m.sortino); $('isCalmar').textContent = num(m.calmar); $('isDrawdown').textContent = pct(m.max_drawdown);
   $('oosSharpe').textContent = num(o.sharpe); $('oosDrawdown').textContent = pct(o.max_drawdown); $('oosSample').textContent = `${o.sample_size || 0} mo`;
   $('dataCoverage').textContent = `${result.sample_size} observations · ${result.start_date} → ${result.end_date}`;
+  const staticSnapshot = Boolean(result.deployment?.static_snapshot);
+  ['optimizer', 'research_window', 'frequency', 'rebalance_frequency', 'transaction_cost_bps'].forEach(id => { $(id).disabled = staticSnapshot; });
+  $('runButton').disabled = staticSnapshot;
+  $('deploymentNote').textContent = staticSnapshot
+    ? 'Cloudflare edge snapshot · controls are locked to the deployed research result · run the Python engine locally to generate a new snapshot.'
+    : 'Default primary window: 30Y · Optimization is monthly and constrained to long-only, fully invested weights · Values update from cached research results.';
 }
 function renderWindowAllocation(result) {
   const rows = result.allocation_across_windows.filter(r => r.available); const labels = rows.map(r => r.window);

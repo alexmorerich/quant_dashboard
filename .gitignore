@@ -1,8 +1,13 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+node_modules/
+.wrangler/
+*.cpuprofile
 cache/*.json
 data/returns_daily.csv
 data/returns_monthly.csv
 data/metadata.json
 research_result.json
+!research_result.json
+cloudflare/site/*

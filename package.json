@@ -1,0 +1,14 @@
+{
+  "name": "quant-dashboard",
+  "private": true,
+  "scripts": {
+    "test": "python3 -m pytest -q",
+    "build:cloudflare": "python3 cloudflare/build.py",
+    "cloudflare:dev": "npm run build:cloudflare && wrangler dev",
+    "cloudflare:dry-run": "npm run build:cloudflare && wrangler deploy --env production --dry-run",
+    "deploy": "npm run build:cloudflare && wrangler deploy --env production --minify"
+  },
+  "devDependencies": {
+    "wrangler": "^4.121.0"
+  }
+}

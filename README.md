@@ -21,6 +21,7 @@ out-of-sample performance, window stability, regime behavior, and data quality.
 - [What is included](#what-is-included)
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
+- [End-to-end tutorial](#end-to-end-tutorial)
 - [Run the local dashboard](#run-the-local-dashboard)
 - [Run the research pipeline](#run-the-research-pipeline)
 - [Data sources and limitations](#data-sources-and-limitations)
@@ -30,6 +31,7 @@ out-of-sample performance, window stability, regime behavior, and data quality.
 - [Deploy to Cloudflare Workers](#deploy-to-cloudflare-workers)
 - [Update the Cloudflare snapshot](#update-the-cloudflare-snapshot)
 - [Testing and verification](#testing-and-verification)
+- [Troubleshooting](#troubleshooting)
 - [Repository map](#repository-map)
 - [Known limitations](#known-limitations)
 
@@ -111,6 +113,171 @@ npm install
 The project installs Wrangler locally as a dev dependency. Cloudflare
 recommends using a project-local Wrangler executable rather than relying on a
 global installation; use `npx wrangler ...` or the npm scripts below.
+
+## End-to-end tutorial
+
+This section is the shortest complete path from a fresh checkout to a deployed
+research snapshot. Run commands from the repository root.
+
+### Step 1 — Create an isolated Python environment
+
+```bash
+git clone https://github.com/alexmorerich/quant_dashboard.git
+cd quant_dashboard
+
+python3 -m venv .venv
+source .venv/bin/activate       # Windows PowerShell: .venv\\Scripts\\Activate.ps1
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+npm install
+```
+
+If `python3` is not available, install Python 3.10 or newer and rerun the
+commands. Keep the virtual environment active for all Python commands in this
+tutorial.
+
+### Step 2 — Download and inspect the data contract
+
+```bash
+python3 run_research.py --download
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+metadata = json.loads(Path("data/metadata.json").read_text())
+print("Monthly common panel:", metadata["monthly_first_date"], "→", metadata["monthly_last_date"])
+print("Daily common panel:", metadata["daily_first_date"], "→", metadata["daily_last_date"])
+for asset, details in metadata["assets"].items():
+    print(asset, "|", details["source"], "|", details["proxy_status"])
+PY
+```
+
+Before interpreting any result, check the dates, sources, `return_type`, and
+`proxy_status`. The common panel is the intersection of the four assets. A
+shorter history is reported rather than silently filled.
+
+### Step 3 — Generate a reproducible research result
+
+```bash
+python3 run_research.py --optimizer robust_quant
+```
+
+This creates `research_result.json`. The file is the machine-readable handoff
+between the Python research engine and the dashboard/deployment layer.
+
+To compare another historical objective, rerun with a different optimizer:
+
+```bash
+python3 run_research.py --optimizer max_sharpe
+python3 run_research.py --optimizer min_volatility
+python3 run_research.py --optimizer max_sortino
+python3 run_research.py --optimizer max_calmar
+python3 run_research.py --optimizer risk_balanced
+```
+
+The optimizer does not see future test returns during walk-forward fitting.
+Do not copy a weight vector from one run into a different configuration and
+call it out-of-sample; rerun the engine so the cache key and provenance remain
+correct.
+
+### Step 4 — Run and read the local dashboard
+
+```bash
+python3 -m backend.server
+```
+
+Open <http://127.0.0.1:8000>. Read the dashboard from top to bottom:
+
+1. **Selected allocation** — the weights produced by the current optimizer and
+   research window. This is a historical or robust allocation, not a forecast.
+2. **Performance snapshot** — metrics labeled `IN-SAMPLE` were calculated on
+   the selected research history; `OUT-OF-SAMPLE` metrics come from rolling
+   unseen test blocks.
+3. **Rolling allocation and window stability** — use these to see whether the
+   recommendation changes materially across time and 10Y–50Y windows.
+4. **Equity and drawdown curves** — compare paths, not just terminal CAGR.
+5. **Correlation and PCA** — inspect dynamic coupling and concentration in the
+   covariance structure; do not assume correlations are constant.
+6. **Regime and crisis tables** — treat regimes as transparent diagnostics and
+   stress windows as historical scenario evidence.
+7. **Transaction costs, robustness, and provenance** — verify that costs,
+   turnover, score components, sample size, and data proxies are visible.
+
+### Step 5 — Query the local API directly
+
+While the server is running, use a second terminal:
+
+```bash
+curl -fsS http://127.0.0.1:8000/api/health
+curl -fsS http://127.0.0.1:8000/api/config | python3 -m json.tool
+curl -fsS \
+  'http://127.0.0.1:8000/api/research?research_window=30Y&optimizer=robust_quant&frequency=monthly&rebalance_frequency=monthly&transaction_cost_bps=10' \
+  > /tmp/quant-research.json
+python3 -m json.tool /tmp/quant-research.json | head -100
+```
+
+The API caches by all relevant configuration fields plus the data retrieval
+timestamp. If a result looks stale, check `data/metadata.json`, remove only
+the relevant file under `cache/`, and rerun the request.
+
+### Step 6 — Run tests before publishing a result
+
+```bash
+python3 -m pytest -q
+node --check frontend/app.js
+python3 -m compileall -q backend run_research.py cloudflare
+```
+
+Do not deploy a refreshed result if the source-data download, research run, or
+test suite fails. Keep the failed command output with the research run notes.
+
+### Step 7 — Build and inspect the Cloudflare snapshot locally
+
+```bash
+npm run build:cloudflare
+find cloudflare/site -maxdepth 1 -type f -print | sort
+npm run cloudflare:dry-run
+```
+
+`cloudflare/build.py` copies the frontend and the generated
+`research_result.json` into the deployment directory. The Worker adapter
+serves `/api/health`, `/api/research`, and the static dashboard. The deployed
+selectors are intentionally locked because this edge mode serves a snapshot,
+not a live Python optimizer.
+
+### Step 8 — Authenticate and deploy to Cloudflare
+
+```bash
+npx wrangler login
+npx wrangler whoami
+npm run deploy
+```
+
+Copy the `workers.dev` URL printed by Wrangler and verify it:
+
+```bash
+curl -fsS https://<your-worker>.workers.dev/api/health
+curl -fsS https://<your-worker>.workers.dev/api/research \
+  | python3 -c 'import json,sys; x=json.load(sys.stdin); print(x["deployment"]); print(x["weights"])'
+```
+
+Confirm that `deployment.static_snapshot` is `true`, the `research_window` and
+`optimizer` match the generated artifact, and the dashboard displays the edge
+snapshot notice.
+
+### Step 9 — Publish the code and research artifact
+
+```bash
+git status --short
+git add README.md frontend/app.js frontend/index.html cloudflare package.json package-lock.json wrangler.jsonc research_result.json
+git commit -m "Document and deploy quant research dashboard"
+git push
+```
+
+Generated raw CSVs, caches, virtual environments, and `node_modules` are
+ignored. `research_result.json` is intentionally versioned because it is the
+Cloudflare deployment artifact. If the source data or methodology changes,
+include the README/provenance update in the same commit.
 
 ## Run the local dashboard
 
@@ -490,6 +657,88 @@ run_research.py          reproducible research entry point
 - The module makes no statistical significance claims and does not model taxes,
   bid/ask spreads, market impact, financing costs, or investor-specific
   suitability.
+
+## Troubleshooting
+
+### `Missing data/returns_monthly.csv`
+
+Run the downloader from the repository root:
+
+```bash
+python3 run_research.py --download
+```
+
+If downloading fails, check network access and the source URL/status shown in
+the error. Do not substitute a different series without updating the data
+provenance and return-construction notes.
+
+### `Address already in use` on port 8000
+
+Another local dashboard is already running. Either use it, stop that process,
+or choose a different port by editing the server invocation in
+`backend/server.py`. The Python server is intentionally simple and does not
+manage process lifecycles for you.
+
+### Cloudflare deploy reports no updated assets
+
+That is normal when the generated frontend and `research_result.json` are
+unchanged. To intentionally refresh the snapshot, rerun the research pipeline
+first, then run `npm run build:cloudflare` and `npm run deploy`.
+
+### Cloudflare serves old research values
+
+Check the `provenance.retrieved_at` value from `/api/research`, then compare it
+with `data/metadata.json` and the local `research_result.json`. If the local
+artifact is newer, rebuild the site and redeploy. The Worker response includes
+cache headers, but the deployment artifact—not a client-side cache purge—is the
+source of truth for new research values.
+
+### `wrangler check startup` rejects the compatibility date
+
+The compatibility date must be supported by the installed Wrangler/workerd
+binary. Upgrade Wrangler, or temporarily pin `compatibility_date` in
+`wrangler.jsonc` to the newest date supported by the local validation binary;
+then rerun the startup check, dry run, and deployment. Keep the reason for a
+temporary pin documented in the README.
+
+### `/api/research` ignores query parameters on Cloudflare
+
+That is expected in snapshot mode. The Worker records the requested query in
+`deployment.requested_query` for observability but serves the versioned result
+that was generated by Python. To change the window or optimizer, run the
+Python engine with the desired configuration and redeploy.
+
+### The dashboard shows an unavailable 50Y window
+
+This is a data-quality result, not a UI failure. Inspect `data/metadata.json`
+and the provenance ledger. The four-asset common history may be shorter than
+50 years; the system deliberately refuses to manufacture missing history.
+
+### OOS metrics are empty
+
+An OOS series requires enough history for a training window plus at least one
+test block. Use a longer available panel, reduce `training_years` for an
+explicit research experiment, or report the OOS result as unavailable. Never
+replace an empty OOS result with in-sample performance.
+
+### GitHub push is rejected
+
+Check authentication and branch state:
+
+```bash
+gh auth status
+git status -sb
+git remote -v
+```
+
+Push the current feature branch with tracking:
+
+```bash
+git push -u origin "$(git branch --show-current)"
+```
+
+Do not force-push over a shared branch unless the repository owner explicitly
+requests it.
 
 ## Official references
 

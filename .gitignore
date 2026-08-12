@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+cache/*.json
+data/returns_daily.csv
+data/returns_monthly.csv
+data/metadata.json
+research_result.json

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Four-Asset Quant Allocation Research</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">QUANT RESEARCH / FOUR-ASSET SYSTEM</div>
+        <h1>Allocation Research Dashboard</h1>
+        <p class="subhead">S&amp;P 500 · Gold · Long Treasury · Cash / T-Bills</p>
+      </div>
+      <div class="header-status"><span class="status-dot"></span><span id="statusText">Loading research</span></div>
+    </header>
+
+    <section class="control-panel panel">
+      <div class="control-title"><span class="eyebrow">RESEARCH CONFIGURATION</span><span class="muted" id="dataCoverage"></span></div>
+      <div class="controls">
+        <label>Optimizer<select id="optimizer"><option value="robust_quant">Robust Quant Allocation</option><option value="equal_weight">Equal Weight</option><option value="max_sharpe">Historical Max Sharpe</option><option value="min_volatility">Minimum Volatility</option><option value="max_sortino">Maximum Sortino</option><option value="max_calmar">Maximum Calmar</option><option value="risk_balanced">Risk-Balanced</option></select></label>
+        <label>Research window<select id="research_window"><option>10Y</option><option>20Y</option><option selected>30Y</option><option>40Y</option><option>50Y</option></select></label>
+        <label>Frequency<select id="frequency"><option selected>monthly</option><option>daily</option></select></label>
+        <label>Rebalance<select id="rebalance_frequency"><option selected>monthly</option><option>quarterly</option><option>annual</option></select></label>
+        <label>Transaction costs<select id="transaction_cost_bps"><option>0</option><option>5</option><option selected>10</option><option>25</option><option>50</option></select></label>
+        <button id="runButton" class="primary-button">Run research <span>↗</span></button>
+      </div>
+      <div class="control-note">Default primary window: 30Y · Optimization is monthly and constrained to long-only, fully invested weights · Values update from cached research results.</div>
+    </section>
+
+    <main id="dashboard" class="hidden">
+      <section class="hero-grid">
+        <div class="panel allocation-hero">
+          <div class="section-kicker">SELECTED ALLOCATION</div>
+          <div class="hero-content">
+            <div class="donut-wrap"><svg id="donut" viewBox="0 0 220 220" aria-label="Current optimal allocation"></svg><div class="donut-label"><strong id="donutScore">—</strong><span>robustness</span></div></div>
+            <div class="allocation-legend" id="allocationLegend"></div>
+          </div>
+          <div class="hero-caption"><span id="selectedMethod">Robust Quant Allocation</span><span class="divider">/</span><span id="selectedWindow">30Y</span><span class="divider">/</span><span id="selectedDates">—</span></div>
+        </div>
+        <div class="panel metric-hero">
+          <div class="section-kicker">PERFORMANCE SNAPSHOT</div>
+          <div class="metric-columns">
+            <div><span class="label">Expected CAGR</span><strong id="isCagr">—</strong><span class="scope is">IN-SAMPLE</span></div>
+            <div><span class="label">Volatility</span><strong id="isVol">—</strong><span class="scope is">IN-SAMPLE</span></div>
+            <div><span class="label">Sharpe</span><strong id="isSharpe">—</strong><span class="scope is">IN-SAMPLE</span></div>
+            <div><span class="label">Sortino</span><strong id="isSortino">—</strong><span class="scope is">IN-SAMPLE</span></div>
+            <div><span class="label">Calmar</span><strong id="isCalmar">—</strong><span class="scope is">IN-SAMPLE</span></div>
+            <div><span class="label">Max drawdown</span><strong id="isDrawdown">—</strong><span class="scope is">IN-SAMPLE</span></div>
+          </div>
+          <div class="oos-strip"><div><span class="label">OOS Sharpe</span><strong id="oosSharpe">—</strong></div><div><span class="label">OOS Max drawdown</span><strong id="oosDrawdown">—</strong></div><div><span class="label">OOS sample</span><strong id="oosSample">—</strong></div><span class="scope oos">OUT-OF-SAMPLE</span></div>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <article class="panel chart-card wide"><div class="card-head"><div><div class="section-kicker">ALLOCATION COMPOSITION</div><h2>Rolling optimal allocation</h2></div><div class="chart-note">Train → optimize → next rebalance</div></div><div id="rollingAllocation" class="chart tall"></div><div class="legend-row" id="rollingLegend"></div></article>
+        <article class="panel chart-card"><div class="card-head"><div><div class="section-kicker">WINDOW STABILITY</div><h2>Allocation across history</h2></div><span class="score-pill" id="stabilityLabel">—</span></div><div id="windowAllocation" class="chart"></div><div class="stability-foot" id="stabilityFoot"></div></article>
+      </section>
+
+      <section class="grid-2">
+        <article class="panel chart-card wide"><div class="card-head"><div><div class="section-kicker">PATH DEPENDENCY</div><h2>Compounded equity curves</h2></div><div class="chart-note">Gross returns · equal rebalance policy</div></div><div id="equityCurves" class="chart tall"></div><div class="legend-row" id="equityLegend"></div></article>
+        <article class="panel chart-card"><div class="card-head"><div><div class="section-kicker">DOWNSIDE</div><h2>Drawdown curves</h2></div></div><div id="drawdownCurves" class="chart"></div></article>
+      </section>
+
+      <section class="grid-3">
+        <article class="panel chart-card"><div class="card-head"><div><div class="section-kicker">RISK-ADJUSTED</div><h2>Rolling Sharpe</h2></div><div class="chart-note">36M window</div></div><div id="rollingSharpe" class="chart"></div></article>
+        <article class="panel chart-card"><div class="card-head"><div><div class="section-kicker">COUPLING</div><h2>Rolling correlation</h2></div><div class="chart-note">Latest 60M</div></div><div id="correlationHeatmap" class="heatmap"></div></article>
+        <article class="panel chart-card"><div class="card-head"><div><div class="section-kicker">COVARIANCE STRUCTURE</div><h2>PCA variance explained</h2></div></div><div id="pcaVariance" class="chart"></div><div class="pca-foot" id="pcaFoot"></div></article>
+      </section>
+
+      <section class="grid-2">
+        <article class="panel chart-card"><div class="card-head"><div><div class="section-kicker">DIAGNOSTIC REGIMES</div><h2>Regime performance</h2><p class="card-subtitle">Rule-Based Macro Regime · labels shifted one month to avoid leakage</p></div></div><div id="regimePerformance" class="chart"></div></article>
+        <article class="panel chart-card"><div class="card-head"><div><div class="section-kicker">VALIDATION</div><h2>In-sample vs out-of-sample</h2></div></div><div id="isOos" class="chart"></div><div class="validation-note">The optimizer only sees the training period. OOS blocks are 12 months after each 10Y training window.</div></article>
+      </section>
+
+      <section class="grid-2">
+        <article class="panel table-card"><div class="card-head"><div><div class="section-kicker">TRANSACTION COSTS</div><h2>Net performance sensitivity</h2></div><div class="chart-note">bps per one-way turnover</div></div><div id="transactionTable" class="table-scroll"></div></article>
+        <article class="panel table-card"><div class="card-head"><div><div class="section-kicker">STRESS WINDOWS</div><h2>Crisis analysis</h2></div><div class="chart-note">Monthly observations</div></div><div id="crisisTable" class="table-scroll"></div></article>
+      </section>
+
+      <section class="grid-2">
+        <article class="panel table-card"><div class="card-head"><div><div class="section-kicker">ROBUSTNESS</div><h2>Research robustness score</h2></div><span class="score-pill strong" id="robustnessScore">—</span></div><div id="robustnessTable" class="robustness-table"></div><div class="formula" id="robustnessFormula"></div></article>
+        <article class="panel table-card"><div class="card-head"><div><div class="section-kicker">DATA &amp; ASSUMPTIONS</div><h2>Provenance ledger</h2></div></div><div id="provenance" class="provenance"></div><div class="limitations"><strong>Research discipline</strong><span>Historical optimum ≠ predictive optimum. Proxy instruments, missing history, transaction costs, and sample size remain visible.</span></div></article>
+      </section>
+    </main>
+
+    <div id="errorState" class="panel error-state hidden"></div>
+    <footer><span>RESEARCH MODULE v1.0</span><span>Long Treasury is a duration/yield proxy · Rule-based regimes are diagnostic · Not investment advice</span></footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
